@@ -210,7 +210,11 @@ class RichHideMyEmail(HideMyEmail):
                 
                 # Ждем 1 час (3600 секунд) до следующей генерации
                 self.console.log("[blue]Waiting 1 hour until next generation cycle...[/]")
-                await asyncio.sleep(3600)
+                try:
+                    await asyncio.sleep(3600)
+                except asyncio.CancelledError:
+                    # Прерывание ожидания при Ctrl+C
+                    break
                 
             except KeyboardInterrupt:
                 self.console.log(f"[yellow]Auto-generation stopped by user. Generated {total_generated} emails total.[/]")
@@ -218,7 +222,11 @@ class RichHideMyEmail(HideMyEmail):
             except Exception as e:
                 self.console.log(f"[red]Error in auto-generation: {e}[/]")
                 self.console.log("[blue]Retrying in 5 minutes...[/]")
-                await asyncio.sleep(300)  # Ждем 5 минут при ошибке
+                try:
+                    await asyncio.sleep(300)  # Ждем 5 минут при ошибке
+                except asyncio.CancelledError:
+                    # Прерывание ожидания при Ctrl+C
+                    break
 
 
 async def generate(count: Optional[int]) -> None:
@@ -293,7 +301,22 @@ async def interactive_main():
 
 
 if __name__ == "__main__":
+    import signal
+    import sys
+    
+    def signal_handler(signum, frame):
+        print("\nProgram interrupted by user. Exiting gracefully...")
+        sys.exit(0)
+    
+    # Устанавливаем обработчик сигналов для Windows
+    if sys.platform == "win32":
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+    
     try:
         asyncio.run(interactive_main())
     except KeyboardInterrupt:
+        print("\nProgram interrupted by user. Exiting gracefully...")
+    except Exception as e:
+        # Игнорируем ошибки при завершении
         pass

@@ -28,7 +28,15 @@ class HideMyEmail:
         self.cookies = cookies
 
     async def __aenter__(self):
-        connector = aiohttp.TCPConnector(ssl_context=ssl.create_default_context(cafile=certifi.where())) 
+        # Создаем connector с правильными настройками для Windows
+        connector = aiohttp.TCPConnector(
+            ssl_context=ssl.create_default_context(cafile=certifi.where()),
+            limit=10,
+            limit_per_host=5,
+            ttl_dns_cache=300,
+            use_dns_cache=True,
+        )
+        
         self.s = aiohttp.ClientSession(
             headers={
                 "Connection": "keep-alive",
@@ -53,7 +61,14 @@ class HideMyEmail:
         return self
 
     async def __aexit__(self, exc_t, exc_v, exc_tb):
-        await self.s.close()
+        try:
+            if hasattr(self, 's') and self.s:
+                await self.s.close()
+                # Даем время на корректное закрытие соединений
+                await asyncio.sleep(0.1)
+        except Exception:
+            # Игнорируем ошибки при закрытии сессии
+            pass
 
     @property
     def cookies(self) -> str:
