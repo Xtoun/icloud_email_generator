@@ -4,3 +4,5 @@ build/
 dist/
 **/.DS_Store
 *.spec
+cookie.txt
+emails.txt
