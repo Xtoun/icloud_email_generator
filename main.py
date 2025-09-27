@@ -108,8 +108,10 @@ class RichHideMyEmail(HideMyEmail):
                 emails += batch
 
             if len(emails) > 0:
-                with open("emails.txt", "a+") as f:
-                    f.write(os.linesep.join(emails) + os.linesep)
+                with open("emails.txt", "a+", encoding="utf-8") as f:
+                    # Записываем каждую почту на отдельной строке без лишних пустых строк
+                    for email in emails:
+                        f.write(email + "\n")
 
                 self.console.rule()
                 self.console.log(
@@ -291,8 +293,7 @@ async def interactive_main():
 
 
 if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
     try:
-        loop.run_until_complete(interactive_main())
+        asyncio.run(interactive_main())
     except KeyboardInterrupt:
         pass
