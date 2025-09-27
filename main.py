@@ -3,6 +3,7 @@ import datetime
 import os
 from typing import Union, List, Optional
 import re
+import time
 
 from rich.text import Text
 from rich.prompt import IntPrompt
@@ -74,12 +75,18 @@ class RichHideMyEmail(HideMyEmail):
         return email
 
     async def _generate(self, num: int):
-        tasks = []
-        for _ in range(num):
-            task = asyncio.ensure_future(self._generate_one())
-            tasks.append(task)
-
-        return filter(lambda e: e is not None, await asyncio.gather(*tasks))
+        emails = []
+        for i in range(num):
+            email = await self._generate_one()
+            if email:
+                emails.append(email)
+            
+            # Добавляем задержку 5 секунд между генерацией почт (кроме последней)
+            if i < num - 1:
+                self.console.log("[yellow]Waiting 5 seconds before next email generation...[/]")
+                await asyncio.sleep(5)
+        
+        return emails
 
     async def generate(self, count: Optional[int]) -> List[str]:
         try:
@@ -96,12 +103,9 @@ class RichHideMyEmail(HideMyEmail):
             self.console.rule()
 
             with self.console.status(f"[bold green]Generating iCloud email(s)..."):
-                while count > 0:
-                    batch = await self._generate(
-                        count if count < MAX_CONCURRENT_TASKS else MAX_CONCURRENT_TASKS
-                    )
-                    count -= MAX_CONCURRENT_TASKS
-                    emails += batch
+                # Генерируем все почты последовательно с задержками
+                batch = await self._generate(count)
+                emails += batch
 
             if len(emails) > 0:
                 with open("emails.txt", "a+") as f:
@@ -169,6 +173,51 @@ class RichHideMyEmail(HideMyEmail):
 
         self.console.print(self.table)
 
+    async def auto_generate_scheduler(self, max_emails: int = 750):
+        """Автоматическая генерация 5 почт каждый час до достижения лимита"""
+        self.console.log("[bold blue]Starting automatic email generation scheduler...[/]")
+        self.console.log(f"[blue]Will generate 5 emails every hour with 5-second delays between each[/]")
+        self.console.log(f"[blue]Maximum emails to generate: {max_emails}[/]")
+        
+        total_generated = 0
+        
+        while total_generated < max_emails:
+            try:
+                current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                remaining = max_emails - total_generated
+                emails_to_generate = min(5, remaining)
+                
+                self.console.log(f"[green]Starting scheduled generation at {current_time}[/]")
+                self.console.log(f"[blue]Emails generated so far: {total_generated}/{max_emails}[/]")
+                self.console.log(f"[blue]Generating {emails_to_generate} emails in this cycle[/]")
+                
+                # Генерируем почты
+                emails = await self.generate(emails_to_generate)
+                
+                if emails:
+                    total_generated += len(emails)
+                    self.console.log(f"[green]Successfully generated {len(emails)} emails in this cycle[/]")
+                    self.console.log(f"[green]Total generated: {total_generated}/{max_emails}[/]")
+                else:
+                    self.console.log("[yellow]No emails were generated in this cycle[/]")
+                
+                # Проверяем, достигли ли лимита
+                if total_generated >= max_emails:
+                    self.console.log(f"[bold green]🎉 Target reached! Generated {total_generated} emails total.[/]")
+                    break
+                
+                # Ждем 1 час (3600 секунд) до следующей генерации
+                self.console.log("[blue]Waiting 1 hour until next generation cycle...[/]")
+                await asyncio.sleep(3600)
+                
+            except KeyboardInterrupt:
+                self.console.log(f"[yellow]Auto-generation stopped by user. Generated {total_generated} emails total.[/]")
+                break
+            except Exception as e:
+                self.console.log(f"[red]Error in auto-generation: {e}[/]")
+                self.console.log("[blue]Retrying in 5 minutes...[/]")
+                await asyncio.sleep(300)  # Ждем 5 минут при ошибке
+
 
 async def generate(count: Optional[int]) -> None:
     async with RichHideMyEmail() as hme:
@@ -180,9 +229,70 @@ async def list(active: bool, search: str) -> None:
         await hme.list(active, search)
 
 
+async def auto_generate(max_emails: int = 750) -> None:
+    """Запуск автоматической генерации 5 почт каждый час до достижения лимита"""
+    async with RichHideMyEmail() as hme:
+        await hme.auto_generate_scheduler(max_emails)
+
+
+async def interactive_main():
+    """Интерактивное меню для выбора типа генерации"""
+    console = Console()
+    
+    console.print("\n[bold blue]🍎 iCloud Hide My Email Generator[/]")
+    console.print("[blue]Choose generation mode:[/]\n")
+    
+    console.print("1. [yellow]Automatic generation[/] - Generate 5 emails every hour (up to 750 total)")
+    console.print("2. [cyan]List existing emails[/] - View your current emails")
+    console.print("3. [red]Exit[/] - Quit the program\n")
+    
+    while True:
+        try:
+            choice = IntPrompt.ask(
+                Text.assemble("Select option (1-3)"),
+                console=console,
+                default=1
+            )
+            
+            if choice == 1:
+                # Автоматическая генерация
+                max_emails = IntPrompt.ask(
+                    Text.assemble("Maximum emails to generate (default: 750)"),
+                    console=console,
+                    default=750
+                )
+                if max_emails > 750:
+                    console.print("[red]Maximum 750 emails allowed![/]")
+                    max_emails = 750
+                await auto_generate(max_emails)
+                break
+                
+            elif choice == 2:
+                # Просмотр списка
+                await list(True, None)
+                console.print("\n[blue]Press Enter to continue...[/]")
+                input()
+                continue
+                
+            elif choice == 3:
+                # Выход
+                console.print("[green]Goodbye![/]")
+                break
+                
+            else:
+                console.print("[red]Invalid choice! Please select 1-3.[/]")
+                
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Operation cancelled by user.[/]")
+            break
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/]")
+            break
+
+
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     try:
-        loop.run_until_complete(generate(None))
+        loop.run_until_complete(interactive_main())
     except KeyboardInterrupt:
         pass
