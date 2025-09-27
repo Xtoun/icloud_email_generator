@@ -26,12 +26,20 @@ class RichHideMyEmail(HideMyEmail):
 
         if os.path.exists(self._cookie_file):
             # load in a cookie string from file
-            with open(self._cookie_file, "r") as f:
-                self.cookies = [line for line in f if not line.startswith("//")][0]
+            with open(self._cookie_file, "r", encoding="utf-8") as f:
+                cookie_lines = [line.strip() for line in f if line.strip() and not line.startswith("//")]
+                if cookie_lines:
+                    self.cookies = cookie_lines[0]
+                else:
+                    self.console.log(
+                        '[bold red][ERROR][/] "cookie.txt" file is empty! Please add your iCloud cookies.'
+                    )
+                    self.cookies = ""
         else:
             self.console.log(
-                '[bold yellow][WARN][/] No "cookie.txt" file found! Generation might not work due to unauthorized access.'
+                '[bold red][ERROR][/] No "cookie.txt" file found! Please create it with your iCloud cookies.'
             )
+            self.cookies = ""
 
     async def _generate_one(self) -> Union[str, None]:
         # First, generate an email
@@ -249,7 +257,23 @@ async def interactive_main():
     """Интерактивное меню для выбора типа генерации"""
     console = Console()
     
+    # Проверяем наличие cookies перед запуском
+    if not os.path.exists("cookie.txt"):
+        console.print("\n[bold red]❌ ERROR: cookie.txt file not found![/]")
+        console.print("[red]Please create cookie.txt file with your iCloud cookies first.[/]")
+        console.print("[blue]See README.md for instructions on how to get cookies.[/]")
+        return
+    
+    with open("cookie.txt", "r", encoding="utf-8") as f:
+        cookie_content = f.read().strip()
+        if not cookie_content or cookie_content.startswith("//"):
+            console.print("\n[bold red]❌ ERROR: cookie.txt file is empty![/]")
+            console.print("[red]Please add your iCloud cookies to cookie.txt file.[/]")
+            console.print("[blue]See README.md for instructions on how to get cookies.[/]")
+            return
+    
     console.print("\n[bold blue]🍎 iCloud Hide My Email Generator[/]")
+    console.print("[green]✅ Cookies found! Ready to generate emails.[/]")
     console.print("[blue]Choose generation mode:[/]\n")
     
     console.print("1. [yellow]Automatic generation[/] - Generate 5 emails every hour (up to 750 total)")
